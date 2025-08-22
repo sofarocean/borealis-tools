@@ -1,6 +1,7 @@
 import argparse
 import base64
 import csv
+import math
 import sys
 from typing import List, Optional
 
@@ -36,6 +37,31 @@ ANSI_S1_11_MIDBAND_FREQUENCIES: List[int] = [
 ]
 
 MIN_BOREALIS_SPL_DB: float = -192 + 185.642
+
+
+def calculate_pgram_frequencies(df: float, bands_per_octave: int = 24) -> List[float]:
+    """Calculate frequency bins for pgram data using hybrid linear/log spacing."""
+    # Calculate transition point: N = ceil(bands_per_octave / log(2))
+    N = math.ceil(bands_per_octave / math.log(2))
+    
+    # Linear bins (excluding first two DC bins): frequencies 2*df, 3*df, ..., (N-1)*df
+    linear_freqs = [i * df for i in range(2, N)]
+    
+    # Log-spaced bins start at N*df
+    log_freqs = []
+    f_start = N * df
+    
+    # Generate log-spaced frequencies with 24 bands per octave
+    # Each octave multiplies frequency by 2, so each band multiplies by 2^(1/24)
+    factor = 2 ** (1 / bands_per_octave)
+    f = f_start
+    
+    # Generate log frequencies up to reasonable acoustic range (e.g., 20 kHz)
+    while f <= 20000 and len(log_freqs) < 200:  # Reasonable upper limits
+        log_freqs.append(f)
+        f *= factor
+    
+    return linear_freqs + log_freqs
 
 
 def unpack_nibble(bytes: bytes, inibble_abs: int) -> int:
@@ -76,6 +102,22 @@ def parse_borealis_spectrum(base64_string: str) -> Optional[List[float]]:
     return spls_dB
 
 
+def parse_borealis_pgram(base64_string: str, df: float) -> Optional[List[float]]:
+    """Parse pgram (spectrogram) data with hybrid linear/log frequency spacing."""
+    try:
+        raw_bytes = base64.b64decode(base64_string)
+    except:
+        return None
+
+    cstep: float = calc_db_step_for_bits(8)  # 0.75 dB steps
+
+    # Extract single byte values, scale and shift
+    spls_dB = [
+        raw_bytes[i] * cstep + MIN_BOREALIS_SPL_DB for i in range(len(raw_bytes))
+    ]
+    return spls_dB
+
+
 def parse_borealis_levels_stats(base64_string: str) -> Optional[List[List[float]]]:
     try:
         raw_bytes: bytes = base64.b64decode(base64_string)
@@ -106,8 +148,14 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--data-type",
-        choices=["spectrum", "statistics"],
+        choices=["spectrum", "statistics", "pgram"],
         help="type of data to parse. If not provided, it will be inferred from the length of the input line.",
+    )
+    parser.add_argument(
+        "--df",
+        type=float,
+        default=7.629,
+        help="frequency bin spacing in Hz for pgram data (default: 7.629, assumes 31250 Hz sample rate)",
     )
     args = parser.parse_args()
 
@@ -119,8 +167,10 @@ if __name__ == "__main__":
         if data_type is None:
             if len(line) < 100:
                 data_type = "spectrum"
-            else:
+            elif len(line) < 200:
                 data_type = "statistics"
+            else:
+                data_type = "pgram"
 
         if data_type == "statistics":
             result = parse_borealis_levels_stats(line)
@@ -145,4 +195,20 @@ if __name__ == "__main__":
                         if i < len(ANSI_S1_11_MIDBAND_FREQUENCIES)
                         else "Unknown"
                     )
+                    writer.writerow([frequency, f"{spl:.2f}"])
+        elif data_type == "pgram":
+            result = parse_borealis_pgram(line, args.df)
+            if result is not None:
+                frequencies = calculate_pgram_frequencies(args.df)
+                
+                # Print assumption message to stderr if using default df
+                if args.df == 7.629:
+                    print("# Assuming default sample rate (31250 Hz) and df (7.629 Hz)", file=sys.stderr)
+                
+                writer.writerow(["Frequency", "SPL (dB)"])
+                for i, spl in enumerate(result):
+                    if i < len(frequencies):
+                        frequency = f"{frequencies[i]:.2f}"
+                    else:
+                        frequency = "Unknown"
                     writer.writerow([frequency, f"{spl:.2f}"])
