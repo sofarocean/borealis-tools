@@ -42,8 +42,9 @@ echo "<base64_string>" | python parse_borealis_data.py
 ### Data Type Detection
 
 The tool automatically detects the data type based on input length:
+
 - Short strings (< 100 characters): Treated as spectrum data
-- Medium strings (100-199 characters): Treated as statistics data  
+- Medium strings (100-199 characters): Treated as statistics data
 - Long strings (≥ 200 characters): Treated as pgram data
 
 ### Manual Data Type Selection
@@ -73,11 +74,13 @@ echo "<base64_string>" | python parse_borealis_data.py --data-type pgram --df 10
 ### Spectrum Data Example
 
 Input:
+
 ```bash
 echo YcurqkquiRqphlqpS5qe15madRmXexmUYMmUaCmRIqmSIbmRUDmRnyiJ | python parse_borealis_data.py
 ```
 
 Output:
+
 ```csv
 Frequency,SPL (dB)
 40,130.19
@@ -113,11 +116,13 @@ Frequency,SPL (dB)
 ### Statistics Data Example
 
 Input:
+
 ```bash
 echo oKetrZiiqamUnqallpuiopean5+XmZycmJqcm5qcnp2UlpeWjo+Rj4mLjIuEhoeGgoSFhIOEhYSBgoODgoOEg4OEhYSFhYaGh4eIh4mJiYmKiouLjY2NjY2NjY2Ki4uLioqKiouLjIw= | python parse_borealis_data.py
 ```
 
 Output:
+
 ```csv
 Frequency,Q1,Q2,Q3,Mean
 40,113.64,118.89,123.39,123.39
@@ -151,11 +156,13 @@ Frequency,Q1,Q2,Q3,Mean
 ### Pgram Data Example
 
 Input:
+
 ```bash
 echo iYR/mpCzua+KfHl1fZaZjXJxb2tsf4FzbmxpaGp1dGdpaGdreIWBbGdobnp4aWZpcXNqZ2hwbmdoZ2ZnZ2poZWZnZGhoZWdnaGpnZ2dpZ2RkZ2ZlZWZmZWhoZ2ZlZWVmZ2ZmZmdnZ2ZmZmZnaGlpZ2dnaGhoaGhpaWlqanJxamppaWpqampra2pqa2tra2tsbGxsbG1sbW1tbm5ubm5ubm5vb29vcHBwcG9ubW1t | python parse_borealis_data.py
 ```
 
 Output (first 10 lines):
+
 ```csv
 # Assuming default sample rate (31250 Hz) and df (7.629 Hz)
 Frequency,SPL (dB)
@@ -173,10 +180,12 @@ Frequency,SPL (dB)
 ## Output Format
 
 ### Spectrum Data
+
 - **Frequency**: Frequency band in Hz (ANSI S1.11 midband frequencies)
 - **SPL (dB)**: Sound pressure level in decibels
 
 ### Statistics Data
+
 - **Frequency**: Frequency band in Hz (ANSI S1.11 midband frequencies)
 - **Q1**: First quartile (25th percentile) SPL in dB
 - **Q2**: Second quartile (median, 50th percentile) SPL in dB
@@ -184,32 +193,35 @@ Frequency,SPL (dB)
 - **Mean**: Mean SPL in dB
 
 ### Pgram Data
+
 - **Frequency**: Frequency in Hz (hybrid linear/logarithmic spacing)
 - **SPL (dB)**: Sound pressure level in decibels
 
 ## Frequency Bands
 
 ### Spectrum and Statistics Data
+
 The tool supports the following ANSI S1.11 standard nominal midband frequencies:
 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000, 6300, 8000, 10000, 12500, 16000, 20000 Hz
 
-### Pgram Data  
+### Pgram Data
+
 Uses hybrid frequency spacing:
+
 - **Linear spacing**: Low frequencies from 2×df to (N-1)×df where N = ceil(24/ln(2)) ≈ 35
 - **Logarithmic spacing**: High frequencies starting at N×df with 24 bands per octave
-- **Frequency range**: Typically ~15 Hz to ~15 kHz (depends on df parameter)
 
 ## Technical Details
 
-- **Data Encoding**: 
+- **Data Encoding**:
   - Spectrum data: 12-bit precision (0.047 dB steps)
-  - Statistics data: 8-bit precision (0.75 dB steps)  
+  - Statistics data: 8-bit precision (0.75 dB steps)
   - Pgram data: 8-bit precision (0.75 dB steps)
 - **Dynamic Range**: 192 dB
 - **Minimum SPL**: -6.358 dB (calculated as -192 + 185.642)
-- **Pgram Frequency Calculation**: 
+- **Pgram Frequency Calculation**:
   - Default df = 7.629 Hz (assumes 31250 Hz sample rate)
-  - Linear bins: 2×df, 3×df, ..., 34×df  
+  - Linear bins: 2×df, 3×df, ..., 34×df
   - Logarithmic bins: 35×df × 2^(n/24) for n = 0, 1, 2, ...
 
 ## Command Line Options
@@ -224,15 +236,8 @@ optional arguments:
   --data-type {spectrum,statistics,pgram}
                         type of data to parse. If not provided, it will be
                         inferred from the length of the input line.
-  --df DF               frequency bin spacing in Hz for pgram data (default: 7.629, 
+  --df DF               frequency bin spacing in Hz for pgram data (default: 7.629,
                         assumes 31250 Hz sample rate)
-```
-
-optional arguments:
-  -h, --help            show this help message and exit
-  --data-type {spectrum,statistics}
-                        type of data to parse. If not provided, it will be
-                        inferred from the length of the input line.
 ```
 
 ## Error Handling
@@ -241,9 +246,40 @@ optional arguments:
 - Malformed data will not produce output
 - The tool continues processing multiple lines even if some fail
 
+## Testing
+
+The repository includes tests using only built-in Python modules. To run the tests:
+
+### Quick Test Run
+
+```bash
+python test_parse_borealis_data.py
+```
+
+### Test Additional Fixture Data
+
+```bash
+python run_tests.py
+```
+
+The test suite includes:
+
+- **Unit tests**: Testing all parsing functions with expected values from README examples
+- **Data type detection tests**: Verifying automatic detection based on input length
+- **Error handling tests**: Testing invalid input handling
+- **Integration tests**: Testing complete parsing workflows
+
 ## Integration
 
 The tool is designed to work well in Unix pipelines and can be easily integrated into data processing workflows:
+
+```bash
+# Process multiple lines from a file
+cat data.txt | python parse_borealis_data.py > output.csv
+
+# Combine with other tools
+echo "base64_data" | python parse_borealis_data.py | head -10
+```
 
 ```bash
 # Process multiple lines from a file
