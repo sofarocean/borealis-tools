@@ -204,6 +204,8 @@ Frequency,SPL (dB)
 The tool supports the following ANSI S1.11 standard nominal midband frequencies:
 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000, 6300, 8000, 10000, 12500, 16000, 20000 Hz
 
+In the code they are calculated as decidecade bands using the formula 10^(band_number/10) starting at band number 16.
+
 ### Pgram Data
 
 Uses hybrid frequency spacing:
