@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import argparse
 import base64
 import csv
@@ -5,37 +6,21 @@ import math
 import sys
 from typing import List, Optional
 
-ANSI_S1_11_MIDBAND_FREQUENCIES: List[int] = [
-    40,
-    50,
-    63,
-    80,
-    100,
-    125,
-    160,
-    200,
-    250,
-    315,
-    400,
-    500,
-    630,
-    800,
-    1000,
-    1250,
-    1600,
-    2000,
-    2500,
-    3150,
-    4000,
-    5000,
-    6300,
-    8000,
-    10000,
-    12500,
-    16000,
-    20000,
-]
 
+def calculate_ansi_midband_frequency(band_index: int) -> float:
+    """Calculate ANSI S1.11 midband frequency from band index.
+
+    Args:
+        band_index: Zero-based index (0 corresponds to band 16)
+
+    Returns:
+        Frequency in Hz using formula 10^((band_index + 16)/10)
+    """
+    band_number = band_index + 16
+    return 10 ** (band_number / 10)
+
+
+# The 185.642 constant is specific to the first version of Borealis and may change in future hardware revisions
 MIN_BOREALIS_SPL_DB: float = -192 + 185.642
 
 
@@ -43,24 +28,24 @@ def calculate_pgram_frequencies(df: float, bands_per_octave: int = 24) -> List[f
     """Calculate frequency bins for pgram data using hybrid linear/log spacing."""
     # Calculate transition point: N = ceil(bands_per_octave / log(2))
     N = math.ceil(bands_per_octave / math.log(2))
-    
+
     # Linear bins (excluding first two DC bins): frequencies 2*df, 3*df, ..., (N-1)*df
     linear_freqs = [i * df for i in range(2, N)]
-    
+
     # Log-spaced bins start at N*df
     log_freqs = []
     f_start = N * df
-    
+
     # Generate log-spaced frequencies with 24 bands per octave
     # Each octave multiplies frequency by 2, so each band multiplies by 2^(1/24)
     factor = 2 ** (1 / bands_per_octave)
     f = f_start
-    
+
     # Generate log frequencies up to reasonable acoustic range (e.g., 20 kHz)
     while f <= 20000 and len(log_freqs) < 200:  # Reasonable upper limits
         log_freqs.append(f)
         f *= factor
-    
+
     return linear_freqs + log_freqs
 
 
@@ -178,11 +163,7 @@ if __name__ == "__main__":
                 writer.writerow(["Frequency", "Q1", "Q2", "Q3", "Mean"])
                 # Add frequency as first column and format each float to 2 decimal places
                 for i, row in enumerate(result):
-                    frequency = (
-                        ANSI_S1_11_MIDBAND_FREQUENCIES[i]
-                        if i < len(ANSI_S1_11_MIDBAND_FREQUENCIES)
-                        else "Unknown"
-                    )
+                    frequency = f"{calculate_ansi_midband_frequency(i):.2f}"
                     formatted_row = [frequency] + [f"{value:.2f}" for value in row]
                     writer.writerow(formatted_row)
         elif data_type == "spectrum":
@@ -190,21 +171,20 @@ if __name__ == "__main__":
             if result is not None:
                 writer.writerow(["Frequency", "SPL (dB)"])
                 for i, spl in enumerate(result):
-                    frequency = (
-                        ANSI_S1_11_MIDBAND_FREQUENCIES[i]
-                        if i < len(ANSI_S1_11_MIDBAND_FREQUENCIES)
-                        else "Unknown"
-                    )
+                    frequency = f"{calculate_ansi_midband_frequency(i):.2f}"
                     writer.writerow([frequency, f"{spl:.2f}"])
         elif data_type == "pgram":
             result = parse_borealis_pgram(line, args.df)
             if result is not None:
                 frequencies = calculate_pgram_frequencies(args.df)
-                
+
                 # Print assumption message to stderr if using default df
                 if args.df == 7.629:
-                    print("# Assuming default sample rate (31250 Hz) and df (7.629 Hz)", file=sys.stderr)
-                
+                    print(
+                        "# Assuming default sample rate (31250 Hz) and df (7.629 Hz)",
+                        file=sys.stderr,
+                    )
+
                 writer.writerow(["Frequency", "SPL (dB)"])
                 for i, spl in enumerate(result):
                     if i < len(frequencies):

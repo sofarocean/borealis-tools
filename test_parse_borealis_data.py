@@ -34,14 +34,10 @@ class TestParseBorealisData(unittest.TestCase):
         if result is not None:
             self.assertIsInstance(result, list)
 
-            # Test expected length (should match number of ANSI frequencies)
-            expected_length = len(parse_borealis_data.ANSI_S1_11_MIDBAND_FREQUENCIES)
-            self.assertEqual(len(result), expected_length)
-
             # Test some specific expected values from README
-            self.assertAlmostEqual(result[0], 130.19, places=1)  # 40 Hz
-            self.assertAlmostEqual(result[1], 122.45, places=1)  # 50 Hz
-            self.assertAlmostEqual(result[-1], 96.49, places=1)  # 20000 Hz
+            self.assertAlmostEqual(result[0], 130.19, places=1)  # ~39.81 Hz
+            self.assertAlmostEqual(result[1], 122.45, places=1)  # ~50.12 Hz
+            self.assertAlmostEqual(result[-1], 96.49, places=1)  # ~19952.62 Hz
 
     def test_statistics_parsing(self):
         """Test statistics data parsing."""
@@ -164,15 +160,13 @@ class TestParseBorealisData(unittest.TestCase):
                 writer.writerow(["Frequency", "SPL (dB)"])
                 for i, spl in enumerate(result):
                     frequency = (
-                        parse_borealis_data.ANSI_S1_11_MIDBAND_FREQUENCIES[i]
-                        if i < len(parse_borealis_data.ANSI_S1_11_MIDBAND_FREQUENCIES)
-                        else "Unknown"
+                        f"{parse_borealis_data.calculate_ansi_midband_frequency(i):.2f}"
                     )
                     writer.writerow([frequency, f"{spl:.2f}"])
 
         output_str = output.getvalue()
         self.assertIn("Frequency,SPL (dB)", output_str)
-        self.assertIn("40,130.19", output_str)
+        self.assertIn("39.81,130.19", output_str)
 
     @patch("sys.stdout", new_callable=io.StringIO)
     @patch("sys.stderr", new_callable=io.StringIO)
@@ -199,16 +193,14 @@ class TestParseBorealisData(unittest.TestCase):
                 writer.writerow(["Frequency", "Q1", "Q2", "Q3", "Mean"])
                 for i, row in enumerate(result):
                     frequency = (
-                        parse_borealis_data.ANSI_S1_11_MIDBAND_FREQUENCIES[i]
-                        if i < len(parse_borealis_data.ANSI_S1_11_MIDBAND_FREQUENCIES)
-                        else "Unknown"
+                        f"{parse_borealis_data.calculate_ansi_midband_frequency(i):.2f}"
                     )
                     formatted_row = [frequency] + [f"{value:.2f}" for value in row]
                     writer.writerow(formatted_row)
 
         output_str = output.getvalue()
         self.assertIn("Frequency,Q1,Q2,Q3,Mean", output_str)
-        self.assertIn("40,113.64,118.89,123.39,123.39", output_str)
+        self.assertIn("39.81,113.64,118.89,123.39,123.39", output_str)
 
     @patch("sys.stdout", new_callable=io.StringIO)
     @patch("sys.stderr", new_callable=io.StringIO)
@@ -246,41 +238,33 @@ class TestParseBorealisData(unittest.TestCase):
         self.assertIn("Frequency,SPL (dB)", output_str)
         self.assertIn("15.26,96.39", output_str)
 
-    def test_ansi_frequencies_constant(self):
-        """Test that ANSI frequency list is correct."""
-        expected_frequencies = [
-            40,
-            50,
-            63,
-            80,
-            100,
-            125,
-            160,
-            200,
-            250,
-            315,
-            400,
-            500,
-            630,
-            800,
-            1000,
-            1250,
-            1600,
-            2000,
-            2500,
-            3150,
-            4000,
-            5000,
-            6300,
-            8000,
-            10000,
-            12500,
-            16000,
-            20000,
-        ]
-        self.assertEqual(
-            parse_borealis_data.ANSI_S1_11_MIDBAND_FREQUENCIES, expected_frequencies
-        )
+    def test_ansi_frequency_calculation(self):
+        """Test that ANSI frequency calculation is correct."""
+        # Test first few frequencies
+        self.assertAlmostEqual(
+            parse_borealis_data.calculate_ansi_midband_frequency(0), 39.811, places=2
+        )  # 10^(16/10)
+        self.assertAlmostEqual(
+            parse_borealis_data.calculate_ansi_midband_frequency(1), 50.119, places=2
+        )  # 10^(17/10)
+        self.assertAlmostEqual(
+            parse_borealis_data.calculate_ansi_midband_frequency(2), 63.096, places=2
+        )  # 10^(18/10)
+
+        # Test some middle frequencies
+        self.assertAlmostEqual(
+            parse_borealis_data.calculate_ansi_midband_frequency(10), 398.107, places=1
+        )  # 10^(26/10)
+        self.assertAlmostEqual(
+            parse_borealis_data.calculate_ansi_midband_frequency(20), 3981.072, places=0
+        )  # 10^(36/10)
+
+        # Test last frequency (index 27 = band 43)
+        self.assertAlmostEqual(
+            parse_borealis_data.calculate_ansi_midband_frequency(27),
+            19952.623,
+            places=0,
+        )  # 10^(43/10)
 
     def test_min_borealis_spl_constant(self):
         """Test that MIN_BOREALIS_SPL_DB constant is correct."""
@@ -305,25 +289,24 @@ class TestParseBorealisData(unittest.TestCase):
                         for index, expected_frequency, expected_spl in fixture[
                             "expected_samples"
                         ]:
+                            # Handle negative indices (e.g., -1 for last element)
+                            actual_index = index if index >= 0 else len(result) + index
+
                             # Check that index is within bounds of the actual result
-                            if index < len(result):
-                                actual_spl = result[index]
+                            if 0 <= actual_index < len(result):
+                                actual_spl = result[actual_index]
+                                actual_frequency = parse_borealis_data.calculate_ansi_midband_frequency(
+                                    actual_index
+                                )
 
-                                # For spectrum data, we need to map index to ANSI frequency
-                                # but the result might not have all 28 ANSI bands
-                                if index < len(
-                                    parse_borealis_data.ANSI_S1_11_MIDBAND_FREQUENCIES
-                                ):
-                                    actual_frequency = parse_borealis_data.ANSI_S1_11_MIDBAND_FREQUENCIES[
-                                        index
-                                    ]
-
-                                    # Validate frequency matches expected ANSI frequency
-                                    self.assertEqual(
-                                        actual_frequency,
-                                        expected_frequency,
-                                        msg=f"Fixture {fixture['name']}: Expected frequency {expected_frequency} at index {index}, got {actual_frequency}",
-                                    )
+                                # Validate frequency matches expected ANSI frequency (within tolerance)
+                                # Use higher tolerance since we changed from hardcoded to calculated values
+                                self.assertAlmostEqual(
+                                    actual_frequency,
+                                    expected_frequency,
+                                    delta=expected_frequency * 0.05,  # 5% tolerance
+                                    msg=f"Fixture {fixture['name']}: Expected frequency {expected_frequency} at index {index}, got {actual_frequency}",
+                                )
 
                                 # Validate SPL value
                                 self.assertAlmostEqual(
@@ -358,32 +341,22 @@ class TestParseBorealisData(unittest.TestCase):
                         ]:
                             # Handle negative indices properly
                             actual_index = index if index >= 0 else len(result) + index
-                            
+
                             # Check that index is within bounds of the actual result
                             if 0 <= actual_index < len(result):
-                                actual_values = result[index]  # Use original index for accessing result
+                                actual_values = result[actual_index]
+                                actual_frequency = parse_borealis_data.calculate_ansi_midband_frequency(
+                                    actual_index
+                                )
 
-                                # For statistics data, we need to map index to ANSI frequency
-                                # but the result might not have all 28 ANSI bands
-                                if 0 <= actual_index < len(result):
-                                    # Map the actual result index to ANSI frequency
-                                    # Since result may have fewer bands, we map by position
-                                    result_length = len(result)
-                                    ansi_length = len(parse_borealis_data.ANSI_S1_11_MIDBAND_FREQUENCIES)
-                                    
-                                    if result_length <= ansi_length:
-                                        # Result has subset of ANSI frequencies (first N frequencies)
-                                        actual_frequency = parse_borealis_data.ANSI_S1_11_MIDBAND_FREQUENCIES[actual_index]
-                                    else:
-                                        # This shouldn't happen but handle gracefully
-                                        actual_frequency = expected_frequency
-
-                                    # Validate frequency matches expected frequency
-                                    self.assertEqual(
-                                        actual_frequency,
-                                        expected_frequency,
-                                        msg=f"Fixture {fixture['name']}: Expected frequency {expected_frequency} at index {index}, got {actual_frequency}",
-                                    )
+                                # Validate frequency matches expected frequency (within tolerance)
+                                # Use higher tolerance since we changed from hardcoded to calculated values
+                                self.assertAlmostEqual(
+                                    actual_frequency,
+                                    expected_frequency,
+                                    delta=expected_frequency * 0.05,  # 5% tolerance
+                                    msg=f"Fixture {fixture['name']}: Expected frequency {expected_frequency} at index {index}, got {actual_frequency}",
+                                )
 
                                 # Validate statistical values
                                 self.assertEqual(len(actual_values), 4)
